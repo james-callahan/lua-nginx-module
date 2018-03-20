@@ -286,6 +286,69 @@ ngx_http_lua_ffi_headers_sent(ngx_http_request_t *r)
 
     return r->header_sent ? 1 : 0;
 }
+
+
+#if NGX_HTTP_SSL
+
+int
+ngx_http_lua_ssl_upstream_set(ngx_http_request_t *r, SSL_CTX* ctx)
+{
+    ngx_http_upstream_t *u;
+    ngx_ssl_t           *ssl;
+
+    if (r == NULL) {
+        return NGX_ERROR;
+    }
+
+    u = r->upstream;
+
+    if (u == NULL) {
+        return NGX_ERROR;
+    }
+
+    ssl = u->conf->ssl;
+
+    /* Early exit if SSL_CTX* is already correct value */
+    if (ssl != NULL && ssl->ctx == ctx) {
+        return NGX_OK;
+    }
+
+    if (!SSL_CTX_up_ref(ctx)) {
+        return NGX_ERROR;
+    };
+
+    if (ssl != NULL) {
+        /* Free old SSL_CTX* */
+        ngx_ssl_cleanup_ctx(ssl);
+    } else {
+        ngx_pool_cleanup_t *cln;
+
+        ssl = ngx_pcalloc(ngx_cycle->pool, sizeof(ngx_ssl_t));
+        if (ssl == NULL) {
+            SSL_CTX_free(ctx);
+            return NGX_ERROR;
+        }
+
+        cln = ngx_pool_cleanup_add(ngx_cycle->pool, 0);
+        if (cln == NULL) {
+            SSL_CTX_free(ctx);
+            return NGX_ERROR;
+        }
+
+        cln->handler = ngx_ssl_cleanup_ctx;
+        cln->data = ssl;
+
+        u->conf->ssl = ssl;
+        ssl->log = ngx_cycle->log;
+    }
+
+    ssl->ctx = ctx;
+
+    return NGX_OK;
+}
+
+#endif /* NGX_HTTP_SSL */
+
 #endif /* NGX_LUA_NO_FFI_API */
 
 
